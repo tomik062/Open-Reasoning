@@ -1,0 +1,8 @@
+
+models/
+*.gguf
+
+__pycache__/
+venv/
+env/
+.idea/
