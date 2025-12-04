@@ -69,7 +69,16 @@ class ChatEngine:
                 #keep system prompt(history at index 0), delete first user request and ai response
                 self.history.pop(1)
                 self.history.pop(1)
-
+    def generate_answer(self,context):
+        try:
+            output = self.llm.create_chat_completion(
+                messages=context,
+                max_tokens=self.answer_length,  # Cap response length
+            )
+            return output
+        except Exception as e:
+            print(f"\nError during generation: {e}")
+            return None
     def chat_loop(self):
         print("\n💬 Chat Session Started (Type 'exit' to quit)")
         print("-" * 50)
@@ -87,16 +96,12 @@ class ChatEngine:
             self._manage_context()
 
             print("Thinking...")
+            #generate answer
             start = time.time()
-            #generate
-            try:
-                output = self.llm.create_chat_completion(
-                    messages=self.history,
-                    max_tokens=self.answer_length,  # Cap response length
-                )
-
-                #print response with metrics
-                response_time = time.time() - start
+            output = self.generate_answer(self.history)
+            response_time = time.time() - start
+            #print response with metrics
+            if output:
                 response_text = output['choices'][0]['message']['content']
                 token_count = output['usage']['completion_tokens']
                 speed = token_count / response_time
@@ -105,9 +110,6 @@ class ChatEngine:
 
                 # add chat history to memory
                 self.history.append({"role": "assistant", "content": response_text})
-
-            except Exception as e:
-                print(f"\nError during generation: {e}")
 
 # --- Entry Point ---
 if __name__ == "__main__":
