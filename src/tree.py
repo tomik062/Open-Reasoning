@@ -10,14 +10,18 @@ class ReasoningNode:
         self.visits=0
         self.value=0.0
         self.total_value=0.0
+        self.history=[]
     def add_child(self, content=""):
         child = ReasoningNode(content, role="assistant", parent=self)
         self.children.append(child)
         return child
     def get_history(self):
+        if self.history:
+            return self.history
         history = []
         curr = self
         while curr:
             history.append({"role":curr.role,"content":curr.content})
-            parent = curr.parent
-        return list(reversed(history))
+            curr = curr.parent
+        self.history= list(reversed(history))
+        return self.history
