@@ -6,7 +6,7 @@ from typing import List, Dict
 from llama_cpp import Llama
 
 class ChatEngine:
-    def __init__(self, model_path = "./models/Qwen2.5-7B-Instruct-Q4_K_M.gguf"):
+    def __init__(self, model_path = "../models/Qwen2.5-7B-Instruct-Q4_K_M.gguf"):
         self.load_drivers()
         self.context_length=4096
         self.answer_length=500
@@ -26,9 +26,9 @@ class ChatEngine:
         #init history with a system prompt
         self.history= [
             {"role": "system",
-             "content": "You are a helpful, logical assistant." 
-                        "Always answer directly and concisely. "
-                        "If a question is complex, break it down step-by-step before concluding."
+             "content": ("You are a helpful, logical assistant."
+                        "Always answer directly and concisely."
+                        "If a question is complex, break it down step-by-step before concluding.")
             }
         ]
 
@@ -75,6 +75,7 @@ class ChatEngine:
                 messages=context,
                 max_tokens=self.answer_length,  # Cap response length
             )
+            print(output['choices'][0]['message']['content'])
             return output
         except Exception as e:
             print(f"\nError during generation: {e}")
