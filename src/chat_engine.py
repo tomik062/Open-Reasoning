@@ -75,7 +75,6 @@ class ChatEngine:
                 messages=context,
                 max_tokens=self.answer_length,  # Cap response length
             )
-            print(output['choices'][0]['message']['content'])
             return output
         except Exception as e:
             print(f"\nError during generation: {e}")
