@@ -2,7 +2,7 @@ from tree import ReasoningNode
 from chat_engine import ChatEngine
 import re
 class BeamSearch:
-    def __init__(self,engine=None,max_breadth=3,max_depth=20):
+    def __init__(self,engine=None,max_breadth=3,max_depth=10):
         self.root = None
         self.max_breadth = max_breadth
         self.max_depth = max_depth
@@ -46,24 +46,34 @@ class BeamSearch:
             return []
         new_steps=[]
         responses=0
-        base_prompt = (f"Current State: {current_node.content}\n"
-            "Based on this state and the chat history, provide ONE valid, logical next step.\n"
+        if current_node.depth==0:
+            context_label = "Problem Statement"
+            instruction = "Provide the FIRST logical step to solve this."
+        else:
+            context_label = "Last Logical Step"
+            instruction = "Provide the NEXT logical step."
+        user_problem=current_node.get_history()[0]['content']
+        base_prompt = (
+            f"Problem: {user_problem}\n"
+            f"{context_label}: {current_node.content}\n"
+            f"Based on the history and the {context_label.lower()}, {instruction}\n"
             "Constraints:\n"
             "1. The output must be a single sentence.\n"
             "2. Output ONLY the step.\n"
-            "3. If the problem is fully solved, output exactly: 'SOLVED'.")
+            "3. Do not solve the entire problem at once. Focus only on the immediate next logical action.\n"
+            "4. If the problem is fully solved, output exactly: 'SOLVED'.")
         base_context = self.previous_history.copy()+current_node.get_history().copy()
         while responses<self.max_breadth:
             #building a prompt that would create numerous distinct logical steps
             # based on the current state
             prompt = base_prompt
             if new_steps:
-                prompt+="\nIMPORTANT: The next step must be DIFFERENT from these options:\n"
+                prompt+="\nIMPORTANT: The logical step must be DIFFERENT from these options:\n"
                 prompt+="\n".join([f"- {step}" for step in new_steps])
             context=base_context.copy()
             context.append({"role": "user", "content": prompt})
             #generate a logical step from current state
-            output=self.engine.generate_answer(context)
+            output=self.engine.generate_answer(context,temperature=1)
             responses+=1
             if output:
                 response_text = output['choices'][0]['message']['content'].strip()
@@ -73,19 +83,21 @@ class BeamSearch:
 
     def evaluate_steps(self,current_node,new_steps):
         step_scores=[]
-        eval_prompt=("Evaluate how logical the last step is on a scale of 0.0 to 1.0, based on chat history.\n"
-            "Constraints:\n"
-            "1. The output must be a single floating number (e.g., 0.6).\n"
-            "2. Be critical: 0.0 is completely illogical, 1.0 is perfect.\n"
-            "3. Output ONLY the number, no words or letters.\n"
-            "4. Focus your evaluation exclusively on the last step. Do not re-evaluate the previous history,"
-            " but judge whether this specific step is a logical continuation of it.")
+        eval_prompt=("You are a strict logic grader. Rate the last step on a scale of 0.0 to 1.0.\n"
+        "Scoring rules:\n"
+        "1.0: Perfect logic. Essential step.\n"
+        "0.5: Valid but vague or redundant.\n"
+        "0.1: Hallucination, logic error, or repeats a previous step.\n"
+        "Constraints:\n"
+        "1. Be skeptical. Start from 0.0 and only give points for logic.\n"
+        "2. Penalize repetition heavily.\n"
+        "3. Output ONLY the score as a number, dont include words or letters in your output.\n.")
         base_context = self.previous_history.copy()+current_node.get_history().copy()
         for step in new_steps:
             context=base_context.copy()
             context.append({"role": "assistant", "content": step})
             context.append({"role": "user", "content": eval_prompt})
-            evaluation=self.engine.generate_answer(context)
+            evaluation=self.engine.generate_answer(context,temperature=0.1)
             if evaluation:
                 evaluation_text = evaluation['choices'][0]['message']['content'].strip()
                 score= self.text_to_score(evaluation_text)
@@ -108,5 +120,3 @@ class BeamSearch:
         likely_score=float(numbers[-1])
         score= likely_score if 0<=likely_score<=1 else default_score
         return score
-
-
