@@ -1,6 +1,7 @@
 from tree import ReasoningNode
 from chat_engine import ChatEngine
 import re
+import copy
 class BeamSearch:
     def __init__(self,engine=None,max_breadth=3,max_depth=10):
         self.root = None
@@ -10,9 +11,11 @@ class BeamSearch:
             self.engine = engine
         else:
             self.engine = ChatEngine()
-        self.previous_history=self.engine.history.copy()
+        self.previous_history=copy.deepcopy(self.engine.history)
     def search(self,question):
         self.root = ReasoningNode(question,'user')
+        self.root.value=1
+        self.root.total_value=1
         best_nodes=[self.root]
         for depth in range(self.max_depth):
             if not best_nodes:
@@ -60,9 +63,12 @@ class BeamSearch:
             "Constraints:\n"
             "1. The output must be a single sentence.\n"
             "2. Output ONLY the step.\n"
-            "3. Do not solve the entire problem at once. Focus only on the immediate next logical action.\n"
-            "4. If the problem is fully solved, output exactly: 'SOLVED'.")
-        base_context = self.previous_history.copy()+current_node.get_history().copy()
+            "3. If a solution can be directly derived from previous logical steps in chat history, write it\n"
+            "4. If there are no previous logical steps or a solution cant be imminently derived from them,"
+            "make a logical step towards a solution.\n"
+            "5. If the last step was a solution, output exactly: 'SOLVED'.")
+        base_context = (copy.deepcopy(self.previous_history) +
+                        copy.deepcopy(current_node.get_history()))
         while responses<self.max_breadth:
             #building a prompt that would create numerous distinct logical steps
             # based on the current state
@@ -82,18 +88,25 @@ class BeamSearch:
         return new_steps
 
     def evaluate_steps(self,current_node,new_steps):
+        user_problem=current_node.get_history()[0]['content']
         step_scores=[]
-        eval_prompt=("You are a strict logic grader. Rate the last step on a scale of 0.0 to 1.0.\n"
-        "Scoring rules:\n"
-        "1.0: Perfect logic. Essential step.\n"
-        "0.5: Valid but vague or redundant.\n"
-        "0.1: Hallucination, logic error, or repeats a previous step.\n"
-        "Constraints:\n"
-        "1. Be skeptical. Start from 0.0 and only give points for logic.\n"
-        "2. Penalize repetition heavily.\n"
-        "3. Output ONLY the score as a number, dont include words or letters in your output.\n.")
-        base_context = self.previous_history.copy()+current_node.get_history().copy()
+        base_context = (copy.deepcopy(self.previous_history) +
+                        copy.deepcopy(current_node.get_history()))
         for step in new_steps:
+            eval_prompt = ("You are a strict logic grader. Rate the last step on a scale of 0.0 to 1.0.\n"
+                           "Scoring rules:\n"
+                           "1.0: Perfect logic. Essential step.\n"
+                           "0.5: Valid but vague or trivial.\n"
+                           "0.2: redundant or similar to previous step.\n"
+                           "0.0: Logically wrong, impossible according to problem definition, contradicts history, or invalid step.\n"
+                           f"Problem: {user_problem}\n"
+                           f"Last Logical Step: {step}\n"
+                           "Constraints:\n"
+                           "1. verify carefully that the logical step is correct, valid, and doesnt result in a contradiction."
+                           "with previous logical steps or with the original problem.\n"
+                           "2.You must look for contradictions, and score 0 even if there is a chance of contradiction .\n"
+                           "3. Penalize repetition heavily.\n"
+                           "4. Output ONLY the score as a number, dont include words or letters in your output.\n.")
             context=base_context.copy()
             context.append({"role": "assistant", "content": step})
             context.append({"role": "user", "content": eval_prompt})
