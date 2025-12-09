@@ -3,16 +3,33 @@ from chat_engine import ChatEngine
 import re
 import copy
 class BeamSearch:
-    def __init__(self,engine=None,max_breadth=3,max_depth=10):
+    def __init__(self,engine=None,max_breadth=3,max_depth=10,max_retries=0):
         self.root = None
         self.max_breadth = max_breadth
         self.max_depth = max_depth
+        self.max_retries = max_retries
         if engine:
             self.engine = engine
         else:
             self.engine = ChatEngine()
         self.previous_history=copy.deepcopy(self.engine.history)
     def search(self,question):
+        old_max_depth = self.max_depth
+        old_max_breadth = self.max_breadth
+        for attempt in range(self.max_retries+1):
+            result=self.run_search(question)
+            if result:
+                self.max_depth = old_max_depth
+                self.max_breadth = old_max_breadth
+                return result
+            else:
+                if attempt < self.max_retries:
+                    print("Failed to find a solution. Attempting to use more compute")
+                    self.max_depth +=5
+                    self.max_breadth +=1
+        return []
+
+    def run_search(self,question):
         self.root = ReasoningNode(question,'user')
         self.root.value=1
         self.root.total_value=1
@@ -39,7 +56,7 @@ class BeamSearch:
                 new_node.value=score
                 new_node.total_value=score+parent_node.total_value
                 best_nodes.append(new_node)
-        return []
+        return None
 
     def expand_logic(self, current_node):
         if current_node.depth >= self.max_depth:
