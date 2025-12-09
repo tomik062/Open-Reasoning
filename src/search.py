@@ -47,17 +47,21 @@ class BeamSearch:
 
         new_steps = []
         responses = 0
+        last_content = current_node.content.strip().lower()
 
-        last_content = current_node.content.strip()
-
+        #model behavioural parameters
+        rep_penalty = 1.1 #should not repeat steps from chat history or newly expended nodes
+        temp=1
         # default-generate next steps
         context_label = "Last Logical Step"
         instruction = "Provide the NEXT logical step, an idea, or a solution."
+        temp=1 #should be creative
 
         # start state
         if current_node.depth == 0:
             context_label = "Problem Statement"
             instruction = "Provide a starting 'idea:' or a first 'step:' to solve this."
+            temp=1.2 #should explore possibly wild ideas
 
         # verification state
         elif "solution:" in last_content:
@@ -67,15 +71,16 @@ class BeamSearch:
                 "If it is flawed: output 'refute:{reasoning}'. "
                 "If it is correct: output 'SOLVED'."
             )
+            temp=0.1 #should be accurate and careful
+            rep_penalty=1.0 #allow addressing mistakes in refute without penalty
 
         # correction state
         elif "refute:" in last_content:
             context_label = "Critique"
             instruction = "The previous solution was incorrect. Provide a new, corrected 'solution:' or a 'step:' to fix the error."
-
+            temp = 0.7  # should have new creative ideas, but careful and not too wild
         user_problem = current_node.get_history()[0]['content']
 
-        # 2. CLEANER PROMPT: No complex "If/Else" rules. Just formats.
         base_prompt = (
             f"Problem: {user_problem}\n"
             f"{context_label}: {current_node.content}\n"
@@ -101,7 +106,7 @@ class BeamSearch:
             context = base_context.copy()
             context.append({"role": "user", "content": prompt})
 
-            output = self.engine.generate_answer(context, temperature=1)
+            output = self.engine.generate_answer(context, temperature=temp,repeat_penalty=rep_penalty)
             responses += 1
             if output:
                 response_text = output['choices'][0]['message']['content'].strip()
