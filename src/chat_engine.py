@@ -70,14 +70,14 @@ class ChatEngine:
                 #keep system prompt(history at index 0), delete first user request and ai response
                 self.history.pop(1)
                 self.history.pop(1)
-    def generate_answer(self,context,temperature=0.2, answer_length=None):
+    def generate_answer(self,context,answer_length=None,**kwargs):
         if answer_length is None:
             answer_length = self.answer_length
         try:
             output = self.llm.create_chat_completion(
                 messages=context,
                 max_tokens=answer_length,  # Cap response length
-                temperature=temperature    #Control model randomness
+                **kwargs
             )
             return output
         except Exception as e:
