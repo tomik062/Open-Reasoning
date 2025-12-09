@@ -41,48 +41,71 @@ class BeamSearch:
                 best_nodes.append(new_node)
         return []
 
-
-
-
-    def expand_logic(self,current_node):
-        if current_node.depth>=self.max_depth:
+    def expand_logic(self, current_node):
+        if current_node.depth >= self.max_depth:
             return []
-        new_steps=[]
-        responses=0
-        if current_node.depth==0:
+
+        new_steps = []
+        responses = 0
+
+        last_content = current_node.content.strip()
+
+        # default-generate next steps
+        context_label = "Last Logical Step"
+        instruction = "Provide the NEXT logical step, an idea, or a solution."
+
+        # start state
+        if current_node.depth == 0:
             context_label = "Problem Statement"
-            instruction = "Provide the FIRST logical step to solve this."
-        else:
-            context_label = "Last Logical Step"
-            instruction = "Provide the NEXT logical step."
-        user_problem=current_node.get_history()[0]['content']
+            instruction = "Provide a starting 'idea:' or a first 'step:' to solve this."
+
+        # verification state
+        elif "solution:" in last_content:
+            context_label = "Proposed Solution"
+            instruction = (
+                "Review the solution above for errors. "
+                "If it is flawed: output 'refute:{reasoning}'. "
+                "If it is correct: output 'SOLVED'."
+            )
+
+        # correction state
+        elif "refute:" in last_content:
+            context_label = "Critique"
+            instruction = "The previous solution was incorrect. Provide a new, corrected 'solution:' or a 'step:' to fix the error."
+
+        user_problem = current_node.get_history()[0]['content']
+
+        # 2. CLEANER PROMPT: No complex "If/Else" rules. Just formats.
         base_prompt = (
             f"Problem: {user_problem}\n"
             f"{context_label}: {current_node.content}\n"
-            f"Based on the history and the {context_label.lower()}, {instruction}\n"
+            f"Instruction: {instruction}\n"
             "Constraints:\n"
-            "1. The output must be a single sentence.\n"
-            "2. Output ONLY the step.\n"
-            "3. If a solution can be directly derived from previous logical steps in chat history, write it\n"
-            "4. If there are no previous logical steps or a solution cant be imminently derived from them,"
-            "make a logical step towards a solution.\n"
-            "5. If the last step was a solution, output exactly: 'SOLVED'.")
+            "1. You MUST use one of these formats:\n"
+            "   'idea: {content}'\n"
+            "   'step: {content}'\n"
+            "   'solution: {content}'\n"
+            "   'refute: {content}'\n"
+            "   'SOLVED'\n"
+            "2. Be concise.\n"
+            "3. Do not repeat previous steps."
+        )
         base_context = (copy.deepcopy(self.previous_history) +
                         copy.deepcopy(current_node.get_history()))
-        while responses<self.max_breadth:
-            #building a prompt that would create numerous distinct logical steps
-            # based on the current state
+        while responses < self.max_breadth:
             prompt = base_prompt
             if new_steps:
-                prompt+="\nIMPORTANT: The logical step must be DIFFERENT from these options:\n"
-                prompt+="\n".join([f"- {step}" for step in new_steps])
-            context=base_context.copy()
+                prompt += "\nIMPORTANT: Output must be DIFFERENT from:\n"
+                prompt += "\n".join([f"- {step}" for step in new_steps])
+
+            context = base_context.copy()
             context.append({"role": "user", "content": prompt})
-            #generate a logical step from current state
-            output=self.engine.generate_answer(context,temperature=1)
-            responses+=1
+
+            output = self.engine.generate_answer(context, temperature=1)
+            responses += 1
             if output:
                 response_text = output['choices'][0]['message']['content'].strip()
+                # Basic cleanup to prevent formatting errors
                 if response_text not in new_steps:
                     new_steps.append(response_text)
         return new_steps
